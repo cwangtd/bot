@@ -1,0 +1,15 @@
+version: '3.7'
+
+services:
+  c-facade:
+    image: c-facade:dev
+    container_name: c-facade
+    platform: linux/amd64
+#    user: appuser
+    ports:
+      - "8010:8010"
+    networks:
+      - backend
+
+networks:
+  backend:
