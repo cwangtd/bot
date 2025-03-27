@@ -1,4 +1,5 @@
 import argparse
+import platform
 import time
 from datetime import date, timedelta, datetime
 
@@ -13,13 +14,14 @@ ACCOUNT = [
 
 MAKE_RESERVATION_ATTEMPTS = 20
 
-RENDER_RESERVATION_MAX_ATTEMPTS = 200
-RENDER_RESERVATION_RETRY_PAUSE = 3
+RENDER_RESERVATION_MAX_ATTEMPTS = 120
+RENDER_RESERVATION_RETRY_PAUSE = 2
 
 RENDER_RESERVATION_ATTEMPTS_PER_MIN = 60 / RENDER_RESERVATION_RETRY_PAUSE
 RENDER_RESERVATION_ATTEMPT_DURATION_MIN = RENDER_RESERVATION_MAX_ATTEMPTS / RENDER_RESERVATION_ATTEMPTS_PER_MIN
 
-BROWSER_TIMEOUT = int(RENDER_RESERVATION_ATTEMPT_DURATION_MIN * 1.5) * 60 * 1000
+BROWSER_TIMEOUT = int(RENDER_RESERVATION_ATTEMPT_DURATION_MIN * 2) * 60 * 1000
+PAGE_TIMEOUT = 5 * 1000
 UI_TIMEOUT = 3 * 1000
 
 
@@ -31,8 +33,9 @@ class LTHelper:
         print(f'{datetime.now()} | target date: {self.target_date}, target time: {self.target_time}')
 
     def exec(self):
+        is_not_mac = platform.system().lower() != "darwin"
         with sync_playwright() as playwright:
-            browser = playwright.firefox.launch(timeout=BROWSER_TIMEOUT, headless=False)
+            browser = playwright.firefox.launch(timeout=BROWSER_TIMEOUT, headless=is_not_mac)
             context = browser.new_context()
             page = context.new_page()
 
@@ -82,7 +85,6 @@ class LTHelper:
 
     def render_reservation(self, page) -> bool:
         max_tries = RENDER_RESERVATION_MAX_ATTEMPTS
-        sleep = RENDER_RESERVATION_RETRY_PAUSE
         count = 0
         while count < max_tries:
             clicked = self.goto_reservation_page(page)
@@ -91,25 +93,23 @@ class LTHelper:
             if clicked:
                 return True
             else:
-                time.sleep(sleep)
+                time.sleep(RENDER_RESERVATION_RETRY_PAUSE)
         return False
 
     def goto_reservation_page(self, page) -> bool:
         try:
             rev_url = RESERVE_URL + str(self.target_date)
-            page.goto(rev_url)
+            page.goto(rev_url, timeout=PAGE_TIMEOUT)
             page.wait_for_load_state('networkidle')
-            time.sleep(1)
 
             timeslot = f"a[data-testid='resourceBookingTile']:has(div.timeslot-time:text('{self.target_time}'))"
             locator = page.locator(timeslot).nth(0)
             if locator.is_visible(timeout=UI_TIMEOUT):
                 locator.click(timeout=UI_TIMEOUT)
                 page.wait_for_load_state('networkidle')
-                print(f'Clicked: {self.target_time}')
+                print(f'{datetime.now()} | Clicked: {self.target_time}')
                 return True
             else:
-                print(f'Invisible: {self.target_time}')
                 return False
         except Exception as e:
             print(e)
