@@ -6,81 +6,120 @@ from playwright.sync_api import sync_playwright
 
 LOGIN_URL = 'https://my.lifetime.life/login.html?resource=%2Fclubs%2Fnj%2Fflorham-park.html'
 RESERVE_URL = 'https://my.lifetime.life/clubs/nj/florham-park/resource-booking.html?sport=Pickleball%3A+Indoor&clubId=165&duration=60&hideModal=true&startTime=-1&date='
-USERNAME = 'jj-gardener@hotmail.com'
-PASSWORD = 'JiaJia!018'
+
+ACCOUNT = [
+    ('jj-gardener@hotmail.com', 'JiaJia!018')
+]
+
+MAKE_RESERVATION_ATTEMPTS = 20
+
+RENDER_RESERVATION_MAX_ATTEMPTS = 200
+RENDER_RESERVATION_RETRY_PAUSE = 3
+
+RENDER_RESERVATION_ATTEMPTS_PER_MIN = 60 / RENDER_RESERVATION_RETRY_PAUSE
+RENDER_RESERVATION_ATTEMPT_DURATION_MIN = RENDER_RESERVATION_MAX_ATTEMPTS / RENDER_RESERVATION_ATTEMPTS_PER_MIN
+
+BROWSER_TIMEOUT = int(RENDER_RESERVATION_ATTEMPT_DURATION_MIN * 1.5) * 60 * 1000
+UI_TIMEOUT = 3 * 1000
 
 
 class LTHelper:
-    @staticmethod
-    def exec(rev_in_days: int, rev_time: str):
-        target_date = date.today() + timedelta(days=rev_in_days)
-        print(f'Now: {datetime.now()}, target_date: {target_date}, target time: {rev_time}')
+    def __init__(self, account_id, advance_in_days, rev_time):
+        self.username, self.password = ACCOUNT[account_id]
+        self.target_date = date.today() + timedelta(days=advance_in_days)
+        self.target_time = rev_time
+        print(f'{datetime.now()} | target date: {self.target_date}, target time: {self.target_time}')
 
+    def exec(self):
         with sync_playwright() as playwright:
-            browser = playwright.firefox.launch(timeout=120000)
+            browser = playwright.firefox.launch(timeout=BROWSER_TIMEOUT, headless=False)
             context = browser.new_context()
             page = context.new_page()
 
             page.goto(LOGIN_URL)
-            print(f'Loaded {LOGIN_URL}')
-
             time.sleep(1)
 
             try:
-                page.click('text=Accept All', timeout=1000)
-                print('Accepted cookies')
+                page.click('text=Accept All', timeout=UI_TIMEOUT)
                 time.sleep(1)
             except:
-                print('No cookies to accept')
+                print(f'{datetime.now()} | No cookies to accept')
 
-            page.fill('#account-username', USERNAME)
-            page.fill('#account-password', PASSWORD)
+            page.fill('#account-username', self.username)
+            page.fill('#account-password', self.password)
             page.click('#login-btn')
-            print('Clicked login button')
-
             page.wait_for_load_state('networkidle')
-            print('Loaded login page')
+            print(f'{datetime.now()} | Loaded login page')
 
-            time.sleep(1)
-
-            rev_url = RESERVE_URL + str(target_date)
-            page.goto(rev_url)
-            print(f'Goto {rev_url}')
-
-            time.sleep(1)
-
-            rev_time_element = f"a[data-testid='resourceBookingTile']:has(div.timeslot-time:text('{rev_time}'))"
-            rev_time_locator = page.locator(rev_time_element).nth(0)
-
-            try:
-                bounding_box = rev_time_locator.bounding_box()
-                print(f'Found RevText [0] at: {bounding_box}')
-            except:
-                print(f'Failed to find RevTime at {rev_time}')
+            on_reservation_page = self.render_reservation(page)
+            if not on_reservation_page:
+                print(f'{datetime.now()} | Abort')
                 return
 
-            rev_time_locator.click()
-            print(f'Clicked RevTime: {rev_time}')
-
-            page.wait_for_load_state('networkidle')
-
-            checkbox = page.locator("label[data-testid='acceptWaiver']")
-            checkbox.click()
-            is_checked = checkbox.is_checked()
-            print(f'Checkbox is checked: {is_checked}')
-
-            finish_button = page.locator("button[data-testid='finishBtn']")
-            finish_button.click()
-            print('Clicked Finish')
+            made_reservation = self.make_reservation(page)
+            print(f'{datetime.now()} | Result: {made_reservation}')
 
             time.sleep(1)
             browser.close()
-            print('All set!')
+
+    @staticmethod
+    def make_reservation(page) -> bool:
+        checkbox_selector = "label[data-testid='acceptWaiver']"
+        finish_button_selector = "button[data-testid='finishBtn']"
+
+        for attempt in range(MAKE_RESERVATION_ATTEMPTS):
+            try:
+                checkbox = page.locator(checkbox_selector)
+                checkbox.click(timeout=UI_TIMEOUT)
+                if checkbox.is_checked(timeout=UI_TIMEOUT):
+                    finish = page.locator(finish_button_selector)
+                    finish.click(timeout=UI_TIMEOUT)
+                    print(f'{datetime.now()} | Clicked Finish')
+                    return True
+            except Exception as e:
+                print(f'{datetime.now()} | Attempt {attempt + 1}/{MAKE_RESERVATION_ATTEMPTS}, failed: {e}')
+        return False
+
+    def render_reservation(self, page) -> bool:
+        max_tries = RENDER_RESERVATION_MAX_ATTEMPTS
+        sleep = RENDER_RESERVATION_RETRY_PAUSE
+        count = 0
+        while count < max_tries:
+            clicked = self.goto_reservation_page(page)
+            print(f'{datetime.now()} | Reservation {count}/{max_tries}, page opened: {clicked}')
+            count += 1
+            if clicked:
+                return True
+            else:
+                time.sleep(sleep)
+        return False
+
+    def goto_reservation_page(self, page) -> bool:
+        try:
+            rev_url = RESERVE_URL + str(self.target_date)
+            page.goto(rev_url)
+            page.wait_for_load_state('networkidle')
+            time.sleep(1)
+
+            timeslot = f"a[data-testid='resourceBookingTile']:has(div.timeslot-time:text('{self.target_time}'))"
+            locator = page.locator(timeslot).nth(0)
+            if locator.is_visible(timeout=UI_TIMEOUT):
+                locator.click(timeout=UI_TIMEOUT)
+                page.wait_for_load_state('networkidle')
+                print(f'Clicked: {self.target_time}')
+                return True
+            else:
+                print(f'Invisible: {self.target_time}')
+                return False
+        except Exception as e:
+            print(e)
+            return False
 
 
-parser = argparse.ArgumentParser(description='Example script for reading arguments')
-parser.add_argument("--in_days", type=int, default=8)
-parser.add_argument("--time", type=str, default='9:30_PM')
+parser = argparse.ArgumentParser(description='ArgumentParser')
+parser.add_argument("--a", type=int, default=0)
+parser.add_argument("--d", type=int, default=8)
+parser.add_argument("--t", type=str, default='9:30PM')
 args = parser.parse_args()
 
-LTHelper.exec(args.in_days, args.time.replace('_', ' '))
+LTHelper(args.a, args.d, args.t.replace('AM', ' AM').replace('PM', ' PM')).exec()
