@@ -6,7 +6,7 @@ from datetime import date, timedelta, datetime
 from playwright.sync_api import sync_playwright
 
 LOGIN_URL = 'https://my.lifetime.life/login.html?resource=%2Fclubs%2Fnj%2Fflorham-park.html'
-RESERVE_URL = 'https://my.lifetime.life/clubs/nj/florham-park/resource-booking.html?sport=Pickleball%3A+Indoor&clubId=165&duration=60&hideModal=true&startTime=-1&date='
+RESERVE_URL = 'https://my.lifetime.life/clubs/nj/florham-park/resource-booking.html?sport=Pickleball%3A+Indoor&clubId=165&hideModal=true&startTime=-1'
 
 ACCOUNT = [
     ('jj-gardener@hotmail.com', 'JiaJia!018')
@@ -84,21 +84,23 @@ class LTHelper:
         return False
 
     def render_reservation(self, page) -> bool:
-        max_tries = RENDER_RESERVATION_MAX_ATTEMPTS
-        count = 0
-        while count < max_tries:
-            clicked = self.goto_reservation_page(page)
-            print(f'{datetime.now()} | Reservation {count}/{max_tries}, page opened: {clicked}')
-            count += 1
-            if clicked:
+        _max_attempts = RENDER_RESERVATION_MAX_ATTEMPTS
+        _count = 0
+        while _count < _max_attempts:
+            _date = str(self.target_date)
+            _duration = 30 if _count % 2 == 0 else 60
+            _clicked = self.goto_reservation_page(page, _date, _duration)
+            print(f'{datetime.now()} | Reservation {_count}/{_max_attempts}, page opened: {_clicked}')
+            _count += 1
+            if _clicked:
                 return True
             else:
                 time.sleep(RENDER_RESERVATION_RETRY_PAUSE)
         return False
 
-    def goto_reservation_page(self, page) -> bool:
+    def goto_reservation_page(self, page, date, duration) -> bool:
         try:
-            rev_url = RESERVE_URL + str(self.target_date)
+            rev_url = RESERVE_URL + f'&date={date}&duration={duration}'
             page.goto(rev_url, timeout=PAGE_TIMEOUT)
             page.wait_for_load_state('networkidle')
 
