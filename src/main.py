@@ -12,9 +12,11 @@ ACCOUNT = [
     ('jj-gardener@hotmail.com', 'JiaJia!018')
 ]
 
-MAKE_RESERVATION_ATTEMPTS = 20
+TOTAL_ATTEMPTS = 10
 
-RENDER_RESERVATION_MAX_ATTEMPTS = 120
+MAKE_RESERVATION_ATTEMPTS = 10
+
+RENDER_RESERVATION_MAX_ATTEMPTS = 20
 RENDER_RESERVATION_RETRY_PAUSE = 2
 
 RENDER_RESERVATION_ATTEMPTS_PER_MIN = 60 / RENDER_RESERVATION_RETRY_PAUSE
@@ -54,16 +56,25 @@ class LTHelper:
             page.wait_for_load_state('networkidle')
             print(f'{datetime.now()} | Loaded login page')
 
-            on_reservation_page = self.render_reservation(page)
-            if not on_reservation_page:
-                print(f'{datetime.now()} | Abort')
-                return
-
-            made_reservation = self.make_reservation(page)
-            print(f'{datetime.now()} | Result: {made_reservation}')
+            for _ in range(TOTAL_ATTEMPTS):
+                if self.attempt(page):
+                    break
 
             time.sleep(1)
             browser.close()
+
+    def attempt(self, page) -> bool:
+        on_reservation_page = self.render_reservation(page)
+        if not on_reservation_page:
+            print(f'{datetime.now()} | Abort')
+            return False
+
+        made_reservation = self.make_reservation(page)
+        if not made_reservation:
+            print(f'{datetime.now()} | Result: {made_reservation}')
+            return False
+
+        return True
 
     @staticmethod
     def make_reservation(page) -> bool:
