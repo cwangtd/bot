@@ -32,6 +32,7 @@ class LTHelper:
         self.username, self.password = ACCOUNT[account_id]
         self.target_date = date.today() + timedelta(days=advance_in_days)
         self.target_time = rev_time
+        self.duration = 60 if rev_time.endswith('AM') else 30
         print(f'{datetime.now()} | target date: {self.target_date}, target time: {self.target_time}')
 
     def exec(self):
@@ -99,8 +100,7 @@ class LTHelper:
         _count = 0
         while _count < _max_attempts:
             _date = str(self.target_date)
-            _duration = 30 if _count % 2 == 0 else 60
-            _clicked = self.goto_reservation_page(page, _date, _duration)
+            _clicked = self.goto_reservation_page(page, _date, self.duration)
             print(f'{datetime.now()} | Reservation {_count}/{_max_attempts}, page opened: {_clicked}')
             _count += 1
             if _clicked:
